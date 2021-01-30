@@ -1,7 +1,15 @@
 import log from 'loglevel';
 
-import { startWebKtApp } from './webkt-app';
+import { WebKtApp } from './webkt-app';
 import config from './config/app-config';
 
+const webKtRootElement = document.createElement('div');
+webKtRootElement.id = "web-kt-root";
+document.body.appendChild(webKtRootElement);
+
 log.setLevel(config.logLevel)
-startWebKtApp()
+const app = new WebKtApp({
+    serverUrl: 'ws://localhost:7000'
+})
+
+app.start();
