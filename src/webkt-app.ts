@@ -10,23 +10,29 @@ import { requestInfiniteDemand } from './utils';
 import type { ISubscription, Payload } from 'rsocket-types';
 import { DefaultWebktChannel, WebktChannel, WebktMessage, WebktMessageType } from './webkt-channel';
 import { WebKtEncoders } from './rsocket/encoders';
-import { WebKtHtmlElement, WebKtHtmlElementType, WebKtRenderMessage, WebKtRenderMessageAction, WebKtRenderMessageImpl } from './proto/types/WebKtElement';
+import { WebKtMessageHandler } from './message-handlers/message-handler';
+import { WebKtRenderMessageHandler } from './message-handlers/render-message-handler';
+import { WebKtLinkMessageHandler } from './message-handlers/link-message-handler';
 
 const MetadataProtos = require('./proto/Metadata_pb')
-const WebKtRenderMessageProtos = require('./proto/WebKtRenderMessage_pb')
 
-interface WebKtAppOptions {
+export interface WebKtAppOptions {
     serverUrl: string
 }
 
 export class WebKtApp {
     private options: WebKtAppOptions;
 
-    private rSocketConnectionCancelCallback: CancelCallback | null = null
-    private webktChannelSubscription: ISubscription | null = null
+    private rSocketConnectionCancelCallback: CancelCallback | null = null;
+    private webktChannelSubscription: ISubscription | null = null;
+
+    private serverMessageHandlers: Map<any, WebKtMessageHandler> = new Map();
 
     constructor(options: WebKtAppOptions) {
         this.options = options
+        
+        this.serverMessageHandlers.set(MetadataProtos.Metadata.Type.RENDER, new WebKtRenderMessageHandler(options));
+        this.serverMessageHandlers.set(MetadataProtos.Metadata.Type.LINK, new WebKtLinkMessageHandler(options));
     }
 
     start() {
@@ -86,16 +92,7 @@ export class WebKtApp {
                         content: new Uint8Array(new ArrayBuffer(10)),
                     })
                 },
-                onNext: payload => {
-                    const metadataPb = MetadataProtos.Metadata.deserializeBinary(payload.metadata);
-                    log.debug(`on next metadata ${metadataPb} ${metadataPb.getType()}`);
-                    log.debug(`on next data ${payload.data}`)
-
-                    if (metadataPb.getType() === MetadataProtos.Metadata.Type.RENDER) {
-                        const renderMessagePb = WebKtRenderMessageProtos.WebKtRenderMessage.deserializeBinary(payload.data);
-                        this.t(new WebKtRenderMessageImpl(renderMessagePb));
-                    }
-                },
+                onNext: payload => this.handleServerMessage(payload.metadata, payload.data),
                 onError: it => {
                     const errorSource = (it as any).source
                     log.error(`Webkt channel error`, it, (errorSource))
@@ -105,46 +102,14 @@ export class WebKtApp {
         return webktChannel;
     }
 
-    private t(renderMessage: WebKtRenderMessage) {
-        const targetElement = document.getElementById(renderMessage.targetElementId)
-        if (targetElement === null || targetElement === undefined) {
-            log.warn(`render message target element ${renderMessage.targetElementId} not found`)
-            return;
-        }
-        
-        if (renderMessage.action === WebKtRenderMessageAction.OVERWRITE) {
-            throw Error("NOT SUPPORTED");
-        }
+    private handleServerMessage(metadata: any, data: any) {
+        const metadataPb = MetadataProtos.Metadata.deserializeBinary(metadata);
+        log.debug(`on next metadata ${metadataPb} ${metadataPb.getType()}`);
 
-        const documentFragment = new DocumentFragment();
-        renderMessage.elements.forEach(it => {
-            documentFragment.appendChild(this.createHtmlElement(it));
-        });
-        
-        if (renderMessage.action === WebKtRenderMessageAction.OVERWRITE_CHILDREN && targetElement.hasChildNodes) {
-            targetElement.childNodes.forEach(child => {
-                targetElement.removeChild(child);
-            })
+        if (!this.serverMessageHandlers.has(metadataPb.getType())) {
+            throw Error(`unknown server message type ${metadataPb.getType()}`);
         }
-        targetElement.appendChild(documentFragment);
+        const handler = this.serverMessageHandlers.get(metadataPb.getType());
+        handler?.deserializeAndHandle(data);
     }
-
-    private createHtmlElement(webKtHtmlElement: WebKtHtmlElement): HTMLElement | Text {
-        let resultElement = null;
-        if (webKtHtmlElement.type === WebKtHtmlElementType.TEXT) {
-            resultElement = document.createTextNode(webKtHtmlElement.text);
-        } else {
-            const nonTextElement = document.createElement(tagNameByType[webKtHtmlElement.type]);
-            webKtHtmlElement.children.forEach(child => {
-                nonTextElement.appendChild(this.createHtmlElement(child));
-            });
-            resultElement = nonTextElement;
-        }
-
-        return resultElement;
-    }
-}
-
-const tagNameByType = {
-    [WebKtHtmlElementType.DIV]: 'div'
 }

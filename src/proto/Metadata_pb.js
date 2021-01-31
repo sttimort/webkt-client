@@ -154,7 +154,8 @@ proto.Metadata.serializeBinaryToWriter = function(message, writer) {
  */
 proto.Metadata.Type = {
   SESSION_RESTORATION: 0,
-  RENDER: 1
+  LINK: 1,
+  RENDER: 2
 };
 
 /**

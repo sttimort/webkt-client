@@ -16,6 +16,7 @@ export interface WebKtRenderMessage {
 
 export interface WebKtHtmlElement {
     type: WebKtHtmlElementType,
+    attributes: Map<string, string>
     text: string,
     children: WebKtHtmlElement[],
 }
@@ -63,11 +64,15 @@ class WebKtHtmlElementImpl implements WebKtHtmlElement {
     }
 
     get type(): WebKtHtmlElementType {
-        return this.webKtElementPb.getType() as WebKtHtmlElementType
+        return this.webKtElementPb.getType() as WebKtHtmlElementType;
+    }
+
+    get attributes(): Map<string, string> {
+        return this.webKtElementPb.getAttributesMap();
     }
 
     get text(): string {
-        return this.webKtElementPb.getText() as string
+        return this.webKtElementPb.getText() as string;
     }
 
     get children(): WebKtHtmlElement[] {
